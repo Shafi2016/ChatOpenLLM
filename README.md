@@ -17,10 +17,7 @@ Our package wraps the model loading and text generation functionalities into an 
 You can install ChatOpenLLM via pip:
 
 ```
-!git clone https://github.com/Shafi2016/ChatOpenLLM.git
-%cd /content/ChatOpenLLM
-!pip install .
-%cd ..
+!pip install git+https://github.com/Shafi2016/ChatOpenLLM.git
 ```
 
 ### Example 1
