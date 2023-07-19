@@ -1,0 +1,26 @@
+# [build-system]
+# requires = ["setuptools", "wheel", "poetry-core>=1.0.0"]
+# build-backend = "poetry.core.masonry.api"
+
+# [tool.poetry]
+# name = "ChatOpenLLM"
+# version = "0.1"
+# description = "Open-source Language Model based on Langchain, for creating ChatGPT-like applications."
+# authors = ["Shafiullah Qureshi <qureshi.shafiullah@gmail.com>", "Saad Hassan Khan <saadhassankhan@gmail.com>"]
+# homepage = "https://github.com/Shafi2016/ChatOpenLLM"
+
+# [tool.poetry.dependencies]
+# python = "^3.7"
+# torch = "*"
+# transformers = "*"
+# langchain = "*"
+# sentence_transformers = "*"
+# accelerate = "*"
+# sentencepiece = "*"
+# auto_gptq = "*"
+# safetensors = "*"
+# kor = "*"
+# bitsandbytes = "*"
+# Xformers = "*"
+
+# [tool.poetry.dev-dependencies]
