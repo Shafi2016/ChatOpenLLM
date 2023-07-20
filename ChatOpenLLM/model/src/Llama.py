@@ -1,5 +1,6 @@
 # these functions build from Langchain
 
+
 import torch
 from transformers import LlamaTokenizer, LlamaForCausalLM
 from langchain.chat_models.base import BaseChatModel
@@ -29,13 +30,12 @@ class Chat_Llama(BaseChatModel):
     model_name: str = None  # Add this line
 
     llama_schema: Optional[Dict[str, Any]] = None
-    ######
+    ####
     def _llm_type(self) -> str:
         return "model"
-
-    ####
-
-    def __init__(self, model_path: str, device_map: str, low_cpu_mem_usage: bool, gen_kwargs: dict, llama_schema: Optional[Dict[str, Any]] = None,
+    #####
+    def __init__(self, model_path: str, device_map: str, low_cpu_mem_usage: bool, gen_kwargs: dict, max_new_tokens: int,
+                 llama_schema: Optional[Dict[str, Any]] = None,
                  load_in_4bit: bool=True, load_in_8bit: bool=True, torch_dtype: Optional[Any]=torch.float16):
         super().__init__()
         self.tokenizer = LlamaTokenizer.from_pretrained(model_path, use_fast=True)
@@ -49,10 +49,10 @@ class Chat_Llama(BaseChatModel):
         )
         self.device = self.model.device
         self.gen_kwargs = gen_kwargs
+        self.gen_kwargs['max_new_tokens'] = max_new_tokens  # Add this line
         self.model_name = model_path  # Set the model_name attribute
         self.llama_schema = llama_schema  # Set the llama_schema attribute
-
-
+   
     def get_prompt(self, messages: List[BaseMessage]) -> str:
         prompt = f"{messages[0].content} "
         for i, message in enumerate(messages[1:]):
@@ -128,7 +128,12 @@ class Chat_Llama(BaseChatModel):
             )
         return tiktoken
     ########
-    def _generate(self, messages: List[BaseMessage], stop: Optional[List[str]] = None, **kwargs: Any) -> ChatResult:
+    def _generate(self, text: Union[str, List[BaseMessage]], stop: Optional[List[str]] = None, **kwargs: Any) -> ChatResult:
+        if isinstance(text, str):
+            messages = [HumanMessage(content=text)]
+        else:
+            messages = text
+
         generated_messages = []
         default_args = {
             "sentiment": "",
@@ -141,8 +146,6 @@ class Chat_Llama(BaseChatModel):
 
             outputs = self.model.generate(input_ids=inputs.input_ids.to(self.device), **self.gen_kwargs)
             generated_text = self.tokenizer.batch_decode(outputs[:, inputs.input_ids.shape[1]:], skip_special_tokens=True)[0]
-
-            #print(f"Generated Text: {generated_text}")  # Debugging print statement
 
             if self.llama_schema:
                 function_call = {"name": "some_function", "arguments": default_args.copy()}
@@ -162,8 +165,6 @@ class Chat_Llama(BaseChatModel):
                 if language_match:
                     function_call["arguments"]["language"] = language_match.group(1).strip()
 
-                #print(f"Function Call: {function_call}")  # Debugging print statement
-
                 message_dict = {
                     "content": "",
                     "role": "assistant",
@@ -177,8 +178,6 @@ class Chat_Llama(BaseChatModel):
             generated_messages.append(ChatGeneration(message=generated_message))
 
         return ChatResult(generations=generated_messages)
-
-
 
     def _agenerate(self):
          raise NotImplementedError("Asynchronous generation is not supported.")
