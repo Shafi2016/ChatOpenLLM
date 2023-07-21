@@ -29,7 +29,7 @@ Any model with tokenizer = LlamaTokenizer.from_pretrained(model_path, use_fast=T
 model = LlamaForCausalLM.from_pretrained(model_path) can be used with Chat_Llama()
 from ChatOpenLLM import Chat_Llama, ChatGPTQ, Chat_AutoModels, create_tagging_chain2
 llm = Chat_Llama("TheBloke/wizardLM-7B-HF", 
-                 device_map='auto', 
+                 device_map='auto', llama_schema = None, max_new_tokens = 500,
                  low_cpu_mem_usage=True, 
                  load_in_4bit=True, 
                  gen_kwargs=dict(temperature=0))
