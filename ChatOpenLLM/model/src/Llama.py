@@ -6,7 +6,7 @@ from transformers import LlamaTokenizer, LlamaForCausalLM
 from langchain.chat_models.base import BaseChatModel
 from langchain.schema import BaseMessage, AIMessage, HumanMessage, SystemMessage, ChatResult, ChatGeneration
 import re
-
+from pydantic import Field, root_validator
 import string
 import random
 from typing import (
@@ -21,6 +21,7 @@ from typing import (
     Union,
 )
 
+from langchain.utils import get_from_dict_or_env, get_pydantic_field_names
 
 class Chat_Llama(BaseChatModel):
     tokenizer: LlamaTokenizer = None
@@ -30,7 +31,19 @@ class Chat_Llama(BaseChatModel):
     model_name: str = None  # Add this line
 
     llama_schema: Optional[Dict[str, Any]] = None
+
     ####
+    def _completion_to_aimessage(self, completion):
+        content = completion['choices'][0]['text']
+        return AIMessage(content=content)  # directly create an AIMessage with the content string
+
+   
+    def clean_output(self, content):
+        # Remove single quotes and strip whitespaces
+        cleaned_content = content.replace('\'', '').strip()
+        return cleaned_content
+
+
     def _llm_type(self) -> str:
         return "model"
     #####
@@ -52,7 +65,37 @@ class Chat_Llama(BaseChatModel):
         self.gen_kwargs['max_new_tokens'] = max_new_tokens  # Add this line
         self.model_name = model_path  # Set the model_name attribute
         self.llama_schema = llama_schema  # Set the llama_schema attribute
-   
+    ###
+    class Config:
+        """Configuration for this pydantic object."""
+        allow_population_by_field_name = True
+
+    @root_validator(pre=True)
+    def build_extra(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+            """Build extra kwargs from additional params that were passed in."""
+            all_required_field_names = get_pydantic_field_names(cls)
+            extra = values.get("model_kwargs", {})
+            for field_name in list(values):
+                if field_name in extra:
+                    raise ValueError(f"Found {field_name} supplied twice.")
+                if field_name not in all_required_field_names:
+                    logger.warning(
+                        f"""WARNING! {field_name} is not default parameter.
+                        {field_name} was transferred to model_kwargs.
+                        Please confirm that {field_name} is what you intended."""
+                    )
+                    extra[field_name] = values.pop(field_name)
+
+            invalid_model_kwargs = all_required_field_names.intersection(extra.keys())
+            if invalid_model_kwargs:
+                raise ValueError(
+                    f"Parameters {invalid_model_kwargs} should be specified explicitly. "
+                    f"Instead they were passed in as part of `model_kwargs` parameter."
+                )
+
+            values["model_kwargs"] = extra
+            return values
+
     def get_prompt(self, messages: List[BaseMessage]) -> str:
         prompt = f"{messages[0].content} "
         for i, message in enumerate(messages[1:]):
@@ -145,12 +188,15 @@ class Chat_Llama(BaseChatModel):
             inputs = self.tokenizer(prompt, return_tensors='pt')
 
             outputs = self.model.generate(input_ids=inputs.input_ids.to(self.device), **self.gen_kwargs)
-            generated_text = self.tokenizer.batch_decode(outputs[:, inputs.input_ids.shape[1]:], skip_special_tokens=True)[0]
+            generated_output = self.tokenizer.batch_decode(outputs[:, inputs.input_ids.shape[1]:], skip_special_tokens=True)[0]
+
+            # Process the output through your function to create an AIMessage
+            ai_message = self._completion_to_aimessage({'choices': [{'text': generated_output}]})
 
             if self.llama_schema:
                 function_call = {"name": "some_function", "arguments": default_args.copy()}
 
-                sentiment_match = re.search("Sentiment: (.*?)\n", generated_text, re.DOTALL)
+                sentiment_match = re.search("Sentiment: (.*?)\n", generated_output, re.DOTALL)
                 if sentiment_match:
                     function_call["arguments"]["sentiment"] = sentiment_match.group(1).strip()
 
@@ -161,24 +207,30 @@ class Chat_Llama(BaseChatModel):
                     elif "Negative" in sentiment_match.group(1):
                         function_call["arguments"]["stars"] = random.choice([1, 2])
 
-                language_match = re.search("Language: (.*?)(\n|$)", generated_text, re.DOTALL)
+                language_match = re.search("Language: (.*?)(\n|$)", generated_output, re.DOTALL)
                 if language_match:
                     function_call["arguments"]["language"] = language_match.group(1).strip()
 
-                message_dict = {
-                    "content": "",
-                    "role": "assistant",
-                    "function_call": function_call,  # don't convert function_call to a string
-                }
+                # Check if the message content is a dict (JSON-like)
+                if isinstance(ai_message.content, dict):
+                    message_dict = {
+                        "content": ai_message.content,
+                        "role": "assistant",
+                        "function_call": function_call,  # don't convert function_call to a string
+                    }
+                else:
+                    message_dict = {
+                        "content": ai_message.content,
+                        "role": "assistant",
+                    }
 
                 generated_message = self._convert_dict_to_message(message_dict)
             else:
-                generated_message = AIMessage(content=generated_text)
+                generated_message = ai_message
 
             generated_messages.append(ChatGeneration(message=generated_message))
 
         return ChatResult(generations=generated_messages)
-
     def _agenerate(self):
          raise NotImplementedError("Asynchronous generation is not supported.")
 
@@ -197,4 +249,3 @@ class Chat_Llama(BaseChatModel):
                 else:
                     overall_token_usage[k] = v
         return {"token_usage": overall_token_usage}
-
